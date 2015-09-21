@@ -11,6 +11,11 @@ setup(name='mast.datapower.deploy',
       url='https://github.com/mcindi/mast.datapower.deploy',
       namespace_packages=["mast", "mast.datapower"],
       packages=['mast', 'mast.datapower', 'mast.datapower.deploy'],
+      data_files=[
+          ("mast/datapower/deploy/data", [
+              "./mast/datapower/deploy/data/deploy.conf"
+          ])
+      ],
       license="GPL v2",
       install_requires=[]
      )
