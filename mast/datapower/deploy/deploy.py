@@ -6,8 +6,42 @@ from mast.timestamp import Timestamp
 from mast.cli import Cli
 import os
 import sys
+import subprocess
+from contextlib import contextmanager
 
 mast_home = os.environ["MAST_HOME"]
+logger = make_logger("mast.datapower.deploy")
+
+@contextmanager
+def cd(path):
+    curdir= os.getcwd()
+    os.chdir(path)
+    try: yield
+    finally: os.chdir(curdir)
+
+
+def system_call(
+        command,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        shell=False):
+    """
+    # system_call
+
+    helper function to shell out commands. This should be platform
+    agnostic.
+    """
+    stderr = subprocess.STDOUT
+    pipe = subprocess.Popen(
+        command,
+        stdin=stdin,
+        stdout=stdout,
+        stderr=stderr,
+        shell=shell)
+    stdout, stderr = pipe.communicate()
+    return stdout, stderr
+
 
 def _get_data_file(f):
     _root = os.path.dirname(__file__)
@@ -28,13 +62,14 @@ def ensure_config_file_exists():
         # The default config doesn't exist
         with open(config_file_default, "w") as fout:
             fout.write(_get_data_file("deploy.conf"))
-        logger.error(
-            "default config file not found. "
-            "A blank config file was placed created for you "
-            "Please follow the instructions within this file "
-            "to configure this script. "
-            "The file can be found here: {}".format(config_file_default)
-        )
+        msg = " ".join((
+            "default config file not found.",
+            "A blank config file was placed created for you",
+            "Please follow the instructions within this file",
+            "to configure this script.",
+            "The file can be found here: {}".format(config_file_default)        
+        ))
+        logger.error(msg)
         error = True
     elif not os.path.exists(config_file_local):
         # The default config exists, the user needs to configure the
@@ -54,14 +89,60 @@ def ensure_environment_is_configured(config, environment):
         sys.exit(-1)
 
 
+def clone_svn(server, base_uri, vcs_creds, vcs_uri, export_dir):
+    if not os.path.exists(export_dir):
+        os.makedirs(export_dir)
+    url = "'https://{}{}{}'".format(server, base_uri, vcs_uri).replace("//", "/")
+    command = [
+        "svn",
+        "export",
+        url,
+        "--force",
+        "--no-auth-cache",
+        "--non-interactive",
+        "--username",
+        "'{}'".format(vcs_creds),
+        "--password",
+        "'{}'".format(re.escape(svnPw))
+    ]
+    with cd(export_dir):
+        out, err = system_call(command)
+    if err:
+        logger.err("Error received from svn: {}".format(err))
+        print "Error received from svn: {}".format(err)
+    return export_dir
+
+
+def clone_git(server, base_uri, vcs_creds, vcs_uri, export_dir):
+    if not os.path.exists(export_dir):
+        os.makedirs(export_dir)
+    url = "https://{}@{}{}{}".format(vcs_creds, server, base_uri, vcs_uri)
+    command = [
+        "git",
+        "clone",
+        url,
+        export_dir
+    ]
+    with cd(export_dir):
+        out, err = system_call(command)
+    if err:
+        logger.err("Error received from git: {}".format(err))
+        print "Error received from git: {}".format(err)
+    return export_dir
+
+
+def clone_tfs(server, base_uri, vcs_creds, vcs_uri, export_dir):
+    raise NotImplementedError
+
+
 def clone_repo_from_vcs(vcs_details):
     vcs_type = vcs_details[0]
     if vcs_type.lower() == "git":
-        repo_path = clone_git(vcs_details)
+        repo_path = clone_git(*vcs_details[1:])
     elif vcs_type.lower() == "svn":
-        repo_path = clone_svn(vcs_details)
+        repo_path = clone_svn(*vcs_details[1:])
     elif vcs_type.lower() == "tfs":
-        repo_path = clone_tfs(vcs_details)
+        repo_path = clone_tfs(*vcs_details[1:])
     else:
         logger.error("Unsupported VCS type defined")
         print "Unsupported VCS type defined"
@@ -70,6 +151,7 @@ def clone_repo_from_vcs(vcs_details):
 
 
 def create_inprogress_file(environment):
+    logger = make_logger("mast.datapower.deploy")
     fname = os.path.join(mast_home, "tmp", "{}.inprogress".format(environment))
     if os.path.exists(fname):
         logger.error("Deployment already in progress, aborting!")
@@ -77,7 +159,7 @@ def create_inprogress_file(environment):
         sys.exit(-1)
     else:
         with open(fname, "w") as fout:
-            fout.write(Timestamp().timestamp())
+            fout.write(Timestamp().timestamp)
 
 def delete_inprogress_file(environment):
     fname = os.path.join(mast_home, "tmp", "{}.inprogress".format(environment))
@@ -85,7 +167,8 @@ def delete_inprogress_file(environment):
 
 def main(credentials=[],          timeout=120,
          no_check_hostname=False, environment="",
-         vcs_creds="",            vcs_uri=""):
+         vcs_creds="",            vcs_uri="",
+         vcs_dir="tmp"):
 
     check_hostname = not no_check_hostname
 
@@ -105,6 +188,8 @@ def main(credentials=[],          timeout=120,
     # Clone fresh copy of deployment from VCS
     vcs_details = [config.get("VCS", x) for x in
                         ["type", "server", "base_uri"]]
+    export_dir = os.path.abspath(vcs_dir)
+    vcs_details.extend([vcs_creds, vcs_uri, export_dir])
     repo_path = clone_repo_from_vcs(vcs_details)
 
 
@@ -134,7 +219,6 @@ def main(credentials=[],          timeout=120,
     delete_inprogress_file(environment)
 
 if __name__ == "__main__":
-    logger = make_logger("mast.datapower.deploy")
     try:
         cli = Cli(main=main)
         cli.run()
