@@ -1,23 +1,28 @@
 # -*- coding: utf-8 -*-
-from mast.datapower import datapower
-from mast.config import get_config
-from mast.logging import make_logger
-from mast.timestamp import Timestamp
-from mast.cli import Cli
 import os
+import re
 import sys
 import subprocess
+from mast.cli import Cli
+import dulwich.porcelain as git
+from mast.config import get_config
+from mast.datapower import datapower
+from mast.logging import make_logger
+from mast.timestamp import Timestamp
 from contextlib import contextmanager
 
 mast_home = os.environ["MAST_HOME"]
 logger = make_logger("mast.datapower.deploy")
 
+
 @contextmanager
 def cd(path):
-    curdir= os.getcwd()
+    curdir = os.getcwd()
     os.chdir(path)
-    try: yield
-    finally: os.chdir(curdir)
+    try:
+        yield
+    finally:
+        os.chdir(curdir)
 
 
 def system_call(
@@ -67,7 +72,7 @@ def ensure_config_file_exists():
             "A blank config file was placed created for you",
             "Please follow the instructions within this file",
             "to configure this script.",
-            "The file can be found here: {}".format(config_file_default)        
+            "The file can be found here: {}".format(config_file_default)
         ))
         logger.error(msg)
         error = True
@@ -92,7 +97,11 @@ def ensure_environment_is_configured(config, environment):
 def clone_svn(server, base_uri, vcs_creds, vcs_uri, export_dir):
     if not os.path.exists(export_dir):
         os.makedirs(export_dir)
-    url = "'https://{}{}{}'".format(server, base_uri, vcs_uri).replace("//", "/")
+    url = "'https://{}{}{}'".format(
+        server,
+        base_uri,
+        vcs_uri).replace("//", "/")
+    username, password = vcs_creds.split(":")
     command = [
         "svn",
         "export",
@@ -101,34 +110,27 @@ def clone_svn(server, base_uri, vcs_creds, vcs_uri, export_dir):
         "--no-auth-cache",
         "--non-interactive",
         "--username",
-        "'{}'".format(vcs_creds),
+        "'{}'".format(username),
         "--password",
-        "'{}'".format(re.escape(svnPw))
+        "'{}'".format(re.escape(password))
     ]
     with cd(export_dir):
         out, err = system_call(command)
     if err:
         logger.err("Error received from svn: {}".format(err))
         print "Error received from svn: {}".format(err)
+        sys.exit(-1)
     return export_dir
 
 
 def clone_git(server, base_uri, vcs_creds, vcs_uri, export_dir):
     if not os.path.exists(export_dir):
         os.makedirs(export_dir)
-    url = "https://{}@{}{}{}".format(vcs_creds, server, base_uri, vcs_uri)
-    command = [
-        "git",
-        "clone",
-        url,
-        export_dir
-    ]
     with cd(export_dir):
-        out, err = system_call(command)
-    if err:
-        logger.err("Error received from git: {}".format(err))
-        print "Error received from git: {}".format(err)
-    return export_dir
+        url = "https://{}@{}{}{}".format(vcs_creds, server, base_uri, vcs_uri)
+        repo = git.clone(url)
+        path = os.path.abspath(repo.path)
+    return path
 
 
 def clone_tfs(server, base_uri, vcs_creds, vcs_uri, export_dir):
@@ -161,9 +163,11 @@ def create_inprogress_file(environment):
         with open(fname, "w") as fout:
             fout.write(Timestamp().timestamp)
 
+
 def delete_inprogress_file(environment):
     fname = os.path.join(mast_home, "tmp", "{}.inprogress".format(environment))
-    os.remove(fname)    
+    os.remove(fname)
+
 
 def main(credentials=[],          timeout=120,
          no_check_hostname=False, environment="",
@@ -180,38 +184,39 @@ def main(credentials=[],          timeout=120,
     ensure_environment_is_configured(config, environment)
 
     appliances = config.get(environment, "appliances").split()
-    domain = config.get(environment, "domain").split()
+    domain = config.get(environment, "domain").strip()
 
     env = datapower.Environment(
         appliances, credentials, timeout, check_hostname=check_hostname)
 
     # Clone fresh copy of deployment from VCS
     vcs_details = [config.get("VCS", x) for x in
-                        ["type", "server", "base_uri"]]
+                   ["type", "server", "base_uri"]]
     export_dir = os.path.abspath(vcs_dir)
     vcs_details.extend([vcs_creds, vcs_uri, export_dir])
     repo_path = clone_repo_from_vcs(vcs_details)
 
-
+    os.chdir(repo_path)
     # Get list of files to copy to DataPower appliances
+
 
     # Get list of zip files to deploy
 
-    for appliance in appliances:
+    for appliance in env.appliances:
         # optionally quiesce appliance
-        
+
         # optionally quiesce domain
-        
+
         # optionally quiesce service
-        
+
         # Backup domain on DataPower
-    
+
         # Copy all files to DataPower
-    
+
         # Deploy deployment policy to current domain
-    
+
         # Deploy config zip files to DataPower apply deployment policy
-    
+
         # Save the config
         pass
 
