@@ -172,9 +172,12 @@ def delete_inprogress_file(environment):
 def main(credentials=[],          timeout=120,
          no_check_hostname=False, environment="",
          vcs_creds="",            vcs_uri="",
-         vcs_dir="tmp"):
+         vcs_dir="tmp",           quiesce_appliance=False,
+         quiesce_domain=False,    no_quiesce_service=False,
+         backup_dir="tmp"):
 
     check_hostname = not no_check_hostname
+    quiesce_service = not no_quiesce_service
 
     # Make sure deployment is not in progress
     create_inprogress_file(environment)
@@ -196,11 +199,25 @@ def main(credentials=[],          timeout=120,
     vcs_details.extend([vcs_creds, vcs_uri, export_dir])
     repo_path = clone_repo_from_vcs(vcs_details)
 
+    cwd = os.getcwd()
     os.chdir(repo_path)
+
+
     # Get list of files to copy to DataPower appliances
+
+    # gather anything below ./local/.
+
+    # gather anything below ./$environment/local/.
+
 
 
     # Get list of zip files to deploy
+
+    # get a list of any xml or zip files under ./config/.
+
+
+    # Get deployment policy from ./$environment/deploymentPolicy/.
+
 
     for appliance in env.appliances:
         # optionally quiesce appliance
@@ -210,6 +227,11 @@ def main(credentials=[],          timeout=120,
         # optionally quiesce service
 
         # Backup domain on DataPower
+        backup = appliance.get_normal_backup(
+            domain=domain,
+            format="ZIP",
+            comment="deployment")
+        filename = os.path.join(backup_dir, "{}.zip".format(appliance.hostname))
 
         # Copy all files to DataPower
 
@@ -222,6 +244,8 @@ def main(credentials=[],          timeout=120,
 
     # Clean-up, check-out and exit
     delete_inprogress_file(environment)
+    os.chdir(cwd)
+    os.rmdir(repo_path)
 
 if __name__ == "__main__":
     try:
