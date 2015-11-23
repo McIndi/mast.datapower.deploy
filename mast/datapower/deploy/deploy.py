@@ -12,7 +12,6 @@ from mast.timestamp import Timestamp
 from contextlib import contextmanager
 
 mast_home = os.environ["MAST_HOME"]
-logger = make_logger("mast.datapower.deploy")
 
 
 @contextmanager
@@ -56,6 +55,7 @@ def _get_data_file(f):
 
 
 def ensure_config_file_exists():
+    logger = make_logger("mast.datapower.deploy")
     config_file_default = os.path.join(
         mast_home, "etc", "default", "deploy.conf"
     )
@@ -89,12 +89,14 @@ def ensure_config_file_exists():
 
 
 def ensure_environment_is_configured(config, environment):
+    logger = make_logger("mast.datapower.deploy")
     if not config.has_section(environment):
         logger.error("environment {} is not configured in deploy.conf")
         sys.exit(-1)
 
 
 def clone_svn(server, base_uri, vcs_creds, vcs_uri, export_dir):
+    logger = make_logger("mast.datapower.deploy")
     if not os.path.exists(export_dir):
         os.makedirs(export_dir)
     url = "'https://{}{}{}'".format(
@@ -138,6 +140,7 @@ def clone_tfs(server, base_uri, vcs_creds, vcs_uri, export_dir):
 
 
 def clone_repo_from_vcs(vcs_details):
+    logger = make_logger("mast.datapower.deploy")
     vcs_type = vcs_details[0]
     if vcs_type.lower() == "git":
         repo_path = clone_git(*vcs_details[1:])
@@ -176,6 +179,7 @@ def main(credentials=[],          timeout=120,
          quiesce_domain=False,    no_quiesce_service=False,
          backup_dir="tmp"):
 
+    logger = make_logger("mast.datapower.deploy")
     check_hostname = not no_check_hostname
     quiesce_service = not no_quiesce_service
 
@@ -252,5 +256,6 @@ if __name__ == "__main__":
         cli = Cli(main=main)
         cli.run()
     except:
+        logger = make_logger("mast.datapower.deploy")
         logger.exception(
             "Sorry, an unhandled exception occurred during deployment")
